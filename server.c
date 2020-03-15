@@ -1,10 +1,3 @@
-/* servTCPIt.c - Exemplu de server TCP iterativ
-   Asteapta un nume de la clienti; intoarce clientului sirul
-   "Hello nume".
-
-   Autor: Lenuta Alboaie  <adria@infoiasi.ro> (c)2009
-*/
-
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -19,57 +12,43 @@
 #include <string.h>
 #include <sqlite3.h>
 
-/* portul folosit */
 #define PORT 2737
-
-/* codul de eroare returnat de anumite apeluri */
 extern int errno;
 
-
-
-
-
 int main () {
-    struct sockaddr_in server;    // structura folosita de server
+    struct sockaddr_in server;    
     struct sockaddr_in from;
-    char query[500], *error;        //mesajul primit de la client
-    char msgrasp[100] = " ";        //mesaj de raspuns pentru client
-    int sd, len, accessGranted, bytes, isLine, option, optval = 1;            //descriptorul de socket
+    char query[500], *error;        
+    char msgrasp[100] = " ";       
+    int sd, len, accessGranted, bytes, isLine, option, optval = 1;          
     pid_t pid;
     char input_master_user[50], input_master_pass[50], command[100], commandOutput[1000000];
 
     sqlite3_stmt *res;
     sqlite3* db;
 
-    if (sqlite3_open("/home/stef/CLionProjects/CarolPheasant/Users.db", &db))
+    if (sqlite3_open("./Users.db", &db))
         perror("Error: Could not open database.\n");
-
-    /* crearea unui socket */
+   
     if ((sd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         perror("[server]Eroare la socket().\n");
         return errno;
     }
 
     setsockopt(sd, SOL_SOCKET, SO_REUSEADDR,&optval,sizeof(optval));
-    /* pregatirea structurilor de date */
+  
     bzero(&server, sizeof(server));
     bzero(&from, sizeof(from));
-
-    /* umplem structura folosita de server */
-    /* stabilirea familiei de socket-uri */
+   
     server.sin_family = AF_INET;
-    /* acceptam orice adresa */
     server.sin_addr.s_addr = htonl(INADDR_ANY);
-    /* utilizam un port utilizator */
     server.sin_port = htons(PORT);
 
-    /* atasam socketul */
     if (bind(sd, (struct sockaddr *) &server, sizeof(struct sockaddr)) == -1) {
         perror("[server]Eroare la bind().\n");
         return errno;
     }
 
-    /* punem serverul sa asculte daca vin clienti sa se conecteze */
     if (listen(sd, 5) == -1) {
         perror("[server]Eroare la listen().\n");
         return errno;
@@ -77,19 +56,14 @@ int main () {
 
     printf("[server]Asteptam la portul %d...\n", PORT);
     fflush(stdout);
-    /* servim in mod iterativ clientii... */
     while (1) {
         int client;
         int length = sizeof(from);
 
-
-
-        /* acceptam un client (stare blocanta pina la realizarea conexiunii) */
         client = accept(sd, (struct sockaddr *) &from, &length);
         if (-1 == (pid = fork())) {
             perror("Error at fork");
         }
-        /* eroare la acceptarea conexiunii de la un client */
 
         if (client < 0) {
             perror("[server]Eroare la accept().\n");
