@@ -11,9 +11,7 @@
 #include <fcntl.h>
 #include <stdbool.h>
 
-extern int errno;
-
-int port = 2737;
+int port = 2738;
 
 void GetData(char *input_user, char *input_pass)
 {
@@ -28,32 +26,82 @@ void GetData(char *input_user, char *input_pass)
 
 }
 
+void PrintCommandOutput(char *commandOutput){
+    char *p;
+    int step = 1;
+
+    printf("|%-30s|%-30s|%-30s|%-30s|%-30s|%-30s|\n ","Username", "Passsword", "Category", "Title", "URL", "Note");
+    for (int i=1; i<=92; ++i) printf("__");
+    printf("_");
+    printf("\n");
+    p = strtok(commandOutput, "\n");
+    while(p != NULL)
+    {
+        if (step == 1) printf("|");
+        printf("%-30s|", p);
+        if (step < 6)
+            step++;
+        else {
+            printf("\n ");
+            step = 1;
+            for (int i = 1; i <= 92; ++i) printf("__");
+            printf("\n");
+        }
+        p = strtok(NULL, "\n");
+    }
+    printf("\n");
+    fflush(stdout);
+}
+void GetAndSendNewCell(int sd,char *column){
+    char cell[100];
+    int len;
+
+    printf("Insert %s: ", column);
+    fflush(stdout);
+
+    fgets(cell, 100, stdin);
+
+    /* eliminate \n */
+    len = strlen(cell) - 1;
+    cell[len] = '\0';
+    if (-1 == write(sd, &len, sizeof(int)))
+    {
+        perror("Error: Could not write to server.\n");
+        exit(3);
+    }
+    if (-1 == write(sd, cell, len))
+    {
+        perror("Error: Could not write to server.\n");
+        exit(3);
+    }
+}
 
 void PrintGuide() {
     printf("List of commands:\n\t- 'print all': displays all information about all accounts\n");
     printf("\t- 'print by title input_title': displays all information about account with title = input_title\n");
     printf("\t- 'print by username input_username': displays all information about accounts with username = input_username\n");
-    printf("\t- 'print by category input_category': displays all information about all accounts from input_category category\n");
-    printf("\t- 'add new': will allow you to fill each field for a new account\n");
+    printf("\t- 'print by category input_category': displays all information about all accounts from category = input_category\n");
+    printf("\t- 'add new': will allow you to fill each cell for a new account; insert 'x' for blank cells\n");
+    printf("\t- 'remove all': removes all information about all accounts. (Requires confirmation)\n");
     printf("\t- 'remove by title input_title': removes all information about account with title = input_title\n");
-    printf("\t- 'remove by username input_username': removes all information about account with username = user_name\n");
+    printf("\t- 'remove by username input_username': removes all information about account with username = input_username\n");
+    printf("\t- 'remove by category input_category': removes all information about accounts from category = input_category\n");
     printf("\t- 'print guide': prints guide again\n");
     printf("\t- 'exit': logs out and ends session\n");
     fflush(stdout);
 }
 int main (int argc, char *argv[])
 {
-    int sd, len, accessGranted = 0, option, code;			// descriptorul de socket
-    struct sockaddr_in server;	// structura folosita pentru conectare
-    char msg[100];		// mesajul trimis
+    int sd, len, accessGranted = 0, option;
+    struct sockaddr_in server;
     char input_master_user[50], input_master_pass[50], command[100], commandOutput[1000000];
-    size_t size = 100;
-    
+
     if ((sd = socket (AF_INET, SOCK_STREAM, 0)) == -1)
     {
         perror ("Eroare la socket().\n");
-        return errno;
+        exit(3);
     }
+
 
     server.sin_family = AF_INET;
     server.sin_addr.s_addr = inet_addr("127.0.0.1");
@@ -62,7 +110,7 @@ int main (int argc, char *argv[])
     if (connect (sd, (struct sockaddr *) &server,sizeof (struct sockaddr)) == -1)
     {
         perror ("[client]Eroare la connect().\n");
-        return errno;
+        exit(3);
     }
 
     printf("Welcome to your secure password manager!\nSelect option 1 to sign in, or option 2 to sign up.\n");
@@ -70,7 +118,7 @@ int main (int argc, char *argv[])
     printf("Option: ");
     scanf("%d", &option);
     getchar();
-    GetData(input_master_user, input_master_pass);
+    login:GetData(input_master_user, input_master_pass);
 
     /* tell server: incoming sign up or sign in */
     if (-1 == write(sd, &option, sizeof(int)))
@@ -105,9 +153,9 @@ int main (int argc, char *argv[])
 
     if (option == 2)
     {
-        close(sd);
-        printf("Signed up. Reconnect to sign in.\n");
-        return 0;
+        printf("Signed up. Log in to enter account.\n");
+        option = 1;
+        goto login;
     }
 
     /* wait for confirmation from server that client logged in successfully */
@@ -119,7 +167,12 @@ int main (int argc, char *argv[])
 
     if (accessGranted == 0)
     {
-        printf("Username or password incorrect. Reconnect to try again.\n");
+        char c;
+        printf("Username or password incorrect. Try again?\t[y/n]\t");
+        c = getchar();
+        getchar();
+        if (c == 'y')
+            goto login;
         close(sd);
     }
 
@@ -131,14 +184,25 @@ int main (int argc, char *argv[])
 
         while(1)
         {
+            bzero(command, sizeof(command));
+            bzero(commandOutput, sizeof(commandOutput));
+
             printf("Command: ");
             fgets(command, 100 ,stdin);
 
-
-            printf("%s", command);
-            fflush(stdout);
-            if (strcmp(command, "exit") == 0)
-                break;
+            if(strcmp(command, "print guide\n") == 0){
+                PrintGuide();
+                continue;
+            }
+            else if( strcmp(command, "remove all\n") == 0)
+            {
+                char c;
+                printf("Are you sure you want to delete all your accounts?\t[y/n]\t");
+                c = getchar();
+                getchar();
+                if (c == 'n')
+                    continue;
+            }
 
             len = strlen(command);
             if (-1 == write(sd, &len, sizeof(int)))
@@ -152,6 +216,20 @@ int main (int argc, char *argv[])
                 exit(3);
             }
 
+            if (strcmp(command, "exit\n") == 0)
+                break;
+            else if (strstr(command, "add new") != NULL){
+
+                GetAndSendNewCell(sd,"username");
+                GetAndSendNewCell(sd,"password");
+                GetAndSendNewCell(sd,"category");
+                GetAndSendNewCell(sd,"title");
+                GetAndSendNewCell(sd,"URL");
+                GetAndSendNewCell(sd,"note");
+
+            }
+
+            /* get response from server */
             if (-1 == read(sd, &len, sizeof(int)))
             {
                 perror("Error: Could not read from server.\n");
@@ -163,20 +241,27 @@ int main (int argc, char *argv[])
                 exit(3);
             }
 
+
             if (strstr(commandOutput, "unknown command") != NULL)
             {
-                printf("Unknown command. Try again.\n");
+                printf("Unknown command. Try again.\n\n");
                 fflush(stdout);
             }
-            else if (strstr(commandOutput, "wrong argument") != NULL)
+            else if (strstr(commandOutput, "0 rows") != NULL)
             {
-                printf("Wrong argument. Try again.\n");
+                printf("No rows selected.\n\n");
                 fflush(stdout);
             }
 
             else{
-                printf("%s", commandOutput);
-                fflush(stdout);
+                if(strstr(commandOutput, "no output") == NULL) {
+                    PrintCommandOutput(commandOutput);
+                }
+                else if(strstr(commandOutput, "insert") != NULL)
+                    printf("New line inserted\n\n");
+                else
+                    printf("Account/accounts deleted\n\n");
+
 
             }
 
